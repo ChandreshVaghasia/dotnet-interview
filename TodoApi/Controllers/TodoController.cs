@@ -8,8 +8,10 @@ namespace TodoApi.Controllers
     [Route("api")]
     public class TodoController : ControllerBase
     {
-        public TodoController()
+        private readonly ITodoService _todoService;
+        public TodoController(ITodoService todoService)
         {
+            _todoService = todoService;
         }
 
         [HttpPost("createTodo")]
@@ -17,8 +19,7 @@ namespace TodoApi.Controllers
         {
             try
             {
-                var todoService = new TodoService();
-                var result = todoService.CreateTodo(todo);
+                var result = _todoService.CreateTodo(todo);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -32,10 +33,9 @@ namespace TodoApi.Controllers
         {
             try
             {
-                var todoService = new TodoService();
                 if (request.Id.HasValue)
                 {
-                    var todo = todoService.GetTodoById(request.Id.Value);
+                    var todo = _todoService.GetTodoById(request.Id.Value);
                     if (todo == null)
                     {
                         return NotFound();
@@ -44,7 +44,7 @@ namespace TodoApi.Controllers
                 }
                 else
                 {
-                    var todos = todoService.GetAllTodos();
+                    var todos = _todoService.GetAllTodos();
                     return Ok(todos);
                 }
             }
@@ -59,8 +59,7 @@ namespace TodoApi.Controllers
         {
             try
             {
-                var todoService = new TodoService();
-                var existingTodo = todoService.GetTodoById(request.Id);
+                var existingTodo = _todoService.GetTodoById(request.Id);
                 if (existingTodo == null)
                 {
                     return NotFound();
@@ -73,7 +72,7 @@ namespace TodoApi.Controllers
                     IsCompleted = request.IsCompleted
                 };
 
-                var result = todoService.UpdateTodo(request.Id, todo);
+                var result = _todoService.UpdateTodo(request.Id, todo);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -87,8 +86,7 @@ namespace TodoApi.Controllers
         {
             try
             {
-                var todoService = new TodoService();
-                var result = todoService.DeleteTodo(request.Id);
+                var result = _todoService.DeleteTodo(request.Id);
                 if (result)
                 {
                     return Ok(new { message = "Todo deleted successfully" });

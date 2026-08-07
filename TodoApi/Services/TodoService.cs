@@ -3,7 +3,10 @@ using TodoApi.Models;
 
 namespace TodoApi.Services
 {
-    public class TodoService
+    /// <summary>
+    /// Provides CRUD operations for Todo items.
+    /// </summary>
+    public class TodoService : ITodoService
     {
         private string _connectionString = "Data Source=todos.db";
 

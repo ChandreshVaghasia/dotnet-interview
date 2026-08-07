@@ -68,7 +68,8 @@ public class UnitTest1
     [Fact]
     public void ControllerTest()
     {
-        var controller = new TodoController();
+        var todoService = new TodoService();
+        var controller = new TodoController(todoService);
         var todo = new Todo { Title = "Test", Description = "Desc" };
 
         var result = controller.CreateTodo(todo);
