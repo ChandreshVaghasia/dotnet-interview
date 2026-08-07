@@ -5,6 +5,7 @@ using Xunit;
 using TodoApi.Services;
 using TodoApi.Models;
 using TodoApi.Controllers;
+using TodoApi.Models.Requests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.AspNetCore.Http; // for StatusCodes
@@ -16,246 +17,219 @@ namespace TodoApi.Tests
         [Fact]
         public void Controller_Create_ReturnsCreated()
         {
-            var dbPath = TestHelpers.CreateTempDatabasePath();
-            try
-            {
-                var todoService = new TodoService(TestHelpers.CreateConfiguration(dbPath));
-                var controller = new TodoController(todoService, NullLogger<TodoController>.Instance);
-                var request = new TodoApi.Models.Requests.CreateTodoRequest { Title = "Test", Description = "Desc", IsCompleted = false };
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            mockService
+                .Setup(s => s.CreateTodo(It.IsAny<Todo>()))
+                .Returns((Todo t) =>
+                {
+                    t.Id = 1;
+                    t.Version = 1;
+                    t.CreatedAt = DateTime.UtcNow;
+                    return t;
+                });
 
-                var actionResult = controller.CreateTodo(request);
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
 
-                Assert.IsType<CreatedAtActionResult>(actionResult.Result);
-                var createdResult = actionResult.Result as CreatedAtActionResult;
-                Assert.NotNull(createdResult);
-                var createdTodo = createdResult.Value as Todo;
-                Assert.NotNull(createdTodo);
-                Assert.True(createdTodo.Id > 0);
-                Assert.Equal(1, createdTodo.Version);
-            }
-            finally
-            {
-                TestHelpers.DeleteFileWithRetries(dbPath);
-            }
+            var request = new CreateTodoRequest { Title = "Test", Description = "Desc", IsCompleted = false };
+
+            // Act
+            var actionResult = controller.CreateTodo(request);
+
+            // Assert
+            var createdResult = Assert.IsType<CreatedAtActionResult>(actionResult.Result);
+            var createdTodo = Assert.IsType<Todo>(createdResult.Value);
+            Assert.True(createdTodo.Id > 0);
+            Assert.Equal(1, createdTodo.Version);
+
+            mockService.Verify(s => s.CreateTodo(It.IsAny<Todo>()), Times.Once);
         }
 
         [Fact]
         public void Controller_GetById_ReturnsOk_WhenExists()
         {
-            var dbPath = TestHelpers.CreateTempDatabasePath();
-            try
-            {
-                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
-                var created = service.CreateTodo(new Todo { Title = "X", Description = "Y" });
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            var id = 42;
+            var sample = new Todo { Id = id, Title = "X", Description = "Y", CreatedAt = DateTime.UtcNow, Version = 1 };
+            mockService.Setup(s => s.GetTodoById(id)).Returns(sample);
 
-                var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
 
-                var actionResult = controller.GetTodoById(created.Id);
+            // Act
+            var actionResult = controller.GetTodoById(id);
 
-                Assert.IsType<OkObjectResult>(actionResult.Result);
-                var ok = actionResult.Result as OkObjectResult;
-                Assert.NotNull(ok);
-                var todo = ok.Value as Todo;
-                Assert.NotNull(todo);
-                Assert.Equal(created.Id, todo.Id);
-            }
-            finally
-            {
-                TestHelpers.DeleteFileWithRetries(dbPath);
-            }
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(actionResult.Result);
+            var todo = Assert.IsType<Todo>(ok.Value);
+            Assert.Equal(id, todo.Id);
+
+            mockService.Verify(s => s.GetTodoById(id), Times.Once);
         }
 
         [Fact]
         public void Controller_GetById_ReturnsNotFound_WhenMissing()
         {
-            var dbPath = TestHelpers.CreateTempDatabasePath();
-            try
-            {
-                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
-                var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            mockService.Setup(s => s.GetTodoById(It.IsAny<int>())).Returns((Todo?)null);
 
-                var actionResult = controller.GetTodoById(123456);
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
 
-                Assert.IsType<NotFoundResult>(actionResult.Result);
-            }
-            finally
-            {
-                TestHelpers.DeleteFileWithRetries(dbPath);
-            }
+            // Act
+            var actionResult = controller.GetTodoById(123456);
+
+            // Assert
+            Assert.IsType<NotFoundResult>(actionResult.Result);
+            mockService.Verify(s => s.GetTodoById(123456), Times.Once);
         }
 
         [Fact]
         public void Controller_Update_ReturnsNotFound_ForMissingId()
         {
-            var dbPath = TestHelpers.CreateTempDatabasePath();
-            try
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            mockService.Setup(s => s.UpdateTodo(It.IsAny<int>(), It.IsAny<Todo>(), It.IsAny<int>())).Returns((Todo?)null);
+
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
+
+            var request = new UpdateTodoRequest
             {
-                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
-                var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+                Title = "Nope",
+                Description = "No row",
+                IsCompleted = false,
+                Version = 1
+            };
 
-                var request = new TodoApi.Models.Requests.UpdateTodoRequest
-                {
-                    Title = "Nope",
-                    Description = "No row",
-                    IsCompleted = false,
-                    Version = 1
-                };
+            // Act
+            var actionResult = controller.UpdateTodo(99999, request);
 
-                var actionResult = controller.UpdateTodo(99999, request);
-
-                Assert.IsType<NotFoundResult>(actionResult.Result);
-            }
-            finally
-            {
-                TestHelpers.DeleteFileWithRetries(dbPath);
-            }
+            // Assert
+            Assert.IsType<NotFoundResult>(actionResult.Result);
+            mockService.Verify(s => s.UpdateTodo(99999, It.IsAny<Todo>(), request.Version), Times.Once);
         }
 
         [Fact]
         public void Controller_Update_ReturnsOk_ForExisting()
         {
-            var dbPath = TestHelpers.CreateTempDatabasePath();
-            try
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            var id = 7;
+            var existingVersion = 1;
+            mockService.Setup(s => s.UpdateTodo(id, It.IsAny<Todo>(), existingVersion))
+                       .Returns((int i, Todo t, int v) =>
+                       {
+                           t.Id = i;
+                           t.Version = v + 1;
+                           return t;
+                       });
+
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
+
+            var request = new UpdateTodoRequest
             {
-                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
-                var created = service.CreateTodo(new Todo { Title = "A", Description = "B" });
+                Title = "Updated",
+                Description = "Updated Desc",
+                IsCompleted = true,
+                Version = existingVersion
+            };
 
-                var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+            // Act
+            var actionResult = controller.UpdateTodo(id, request);
 
-                var request = new TodoApi.Models.Requests.UpdateTodoRequest
-                {
-                    Title = "Updated",
-                    Description = "Updated Desc",
-                    IsCompleted = true,
-                    Version = created.Version
-                };
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(actionResult.Result);
+            var updated = Assert.IsType<Todo>(ok.Value);
+            Assert.Equal(id, updated.Id);
+            Assert.Equal("Updated", updated.Title);
+            Assert.Equal(existingVersion + 1, updated.Version);
 
-                var actionResult = controller.UpdateTodo(created.Id, request);
-
-                Assert.IsType<OkObjectResult>(actionResult.Result);
-                var ok = actionResult.Result as OkObjectResult;
-                Assert.NotNull(ok);
-                var updated = ok.Value as Todo;
-                Assert.NotNull(updated);
-                Assert.Equal(created.Id, updated.Id);
-                Assert.Equal("Updated", updated.Title);
-                Assert.Equal(created.Version + 1, updated.Version);
-            }
-            finally
-            {
-                TestHelpers.DeleteFileWithRetries(dbPath);
-            }
+            mockService.Verify(s => s.UpdateTodo(id, It.IsAny<Todo>(), existingVersion), Times.Once);
         }
 
         [Fact]
         public void Controller_Update_ReturnsConflict_ForVersionMismatch()
         {
-            var dbPath = TestHelpers.CreateTempDatabasePath();
-            try
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            var id = 9;
+            mockService.Setup(s => s.UpdateTodo(id, It.IsAny<Todo>(), It.IsAny<int>()))
+                       .Throws(new ConcurrencyException());
+
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
+
+            var request = new UpdateTodoRequest
             {
-                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
-                var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+                Title = "MyUpdate",
+                Description = "attempt with stale version",
+                IsCompleted = true,
+                Version = 1
+            };
 
-                // Create an item
-                var created = service.CreateTodo(new Todo { Title = "Concurrent", Description = "initial" });
+            // Act
+            var actionResult = controller.UpdateTodo(id, request);
 
-                // Simulate another client updating the row first (increments Version)
-                var otherUpdate = service.UpdateTodo(created.Id, new Todo { Title = "OtherUpdate", Description = "x", IsCompleted = false }, created.Version);
-                Assert.NotNull(otherUpdate);
-                Assert.Equal(created.Version + 1, otherUpdate.Version);
+            // Assert
+            var conflict = Assert.IsType<ConflictObjectResult>(actionResult.Result);
+            var problem = Assert.IsType<ProblemDetails>(conflict.Value);
+            Assert.Equal(StatusCodes.Status409Conflict, problem.Status);
 
-                // Now attempt to update with the stale version (created.Version)
-                var request = new TodoApi.Models.Requests.UpdateTodoRequest
-                {
-                    Title = "MyUpdate",
-                    Description = "attempt with stale version",
-                    IsCompleted = true,
-                    Version = created.Version // stale
-                };
-
-                var actionResult = controller.UpdateTodo(created.Id, request);
-
-                // Expect a 409 Conflict
-                Assert.IsType<ConflictObjectResult>(actionResult.Result);
-                var conflict = actionResult.Result as ConflictObjectResult;
-                Assert.NotNull(conflict);
-
-                // Controller returns ProblemDetails in the Conflict body
-                var problem = conflict.Value as ProblemDetails;
-                Assert.NotNull(problem);
-                Assert.Equal(StatusCodes.Status409Conflict, problem.Status);
-            }
-            finally
-            {
-                TestHelpers.DeleteFileWithRetries(dbPath);
-            }
+            mockService.Verify(s => s.UpdateTodo(id, It.IsAny<Todo>(), request.Version), Times.Once);
         }
 
         [Fact]
         public void Controller_Delete_ReturnsNoContent_WhenDeleted()
         {
-            var dbPath = TestHelpers.CreateTempDatabasePath();
-            try
-            {
-                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
-                var created = service.CreateTodo(new Todo { Title = "ToDelete", Description = "d" });
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            var id = 5;
+            mockService.Setup(s => s.DeleteTodo(id)).Returns(true);
 
-                var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
 
-                var result = controller.DeleteTodo(created.Id);
+            // Act
+            var result = controller.DeleteTodo(id);
 
-                Assert.IsType<NoContentResult>(result);
-                // confirm it's gone
-                var get = controller.GetTodoById(created.Id);
-                Assert.IsType<NotFoundResult>(get.Result);
-            }
-            finally
-            {
-                TestHelpers.DeleteFileWithRetries(dbPath);
-            }
+            // Assert
+            Assert.IsType<NoContentResult>(result);
+            mockService.Verify(s => s.DeleteTodo(id), Times.Once);
         }
 
         [Fact]
         public void Controller_Delete_ReturnsNotFound_WhenMissing()
         {
-            var dbPath = TestHelpers.CreateTempDatabasePath();
-            try
-            {
-                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
-                var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            mockService.Setup(s => s.DeleteTodo(It.IsAny<int>())).Returns(false);
 
-                var result = controller.DeleteTodo(99999);
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
 
-                Assert.IsType<NotFoundResult>(result);
-            }
-            finally
-            {
-                TestHelpers.DeleteFileWithRetries(dbPath);
-            }
+            // Act
+            var result = controller.DeleteTodo(99999);
+
+            // Assert
+            Assert.IsType<NotFoundResult>(result);
+            mockService.Verify(s => s.DeleteTodo(99999), Times.Once);
         }
 
         [Fact]
         public void Controller_Create_ReturnsBadRequest_ForInvalidModel()
         {
-            var dbPath = TestHelpers.CreateTempDatabasePath();
-            try
-            {
-                var todoService = new TodoService(TestHelpers.CreateConfiguration(dbPath));
-                var controller = new TodoController(todoService, NullLogger<TodoController>.Instance);
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            // No setup for CreateTodo - it should not be called when model is invalid.
 
-                // model validation failure (ApiController wouldn't run validation when calling method directly)
-                controller.ModelState.AddModelError("Title", "Required");
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
+            controller.ModelState.AddModelError("Title", "Required");
 
-                var request = new TodoApi.Models.Requests.CreateTodoRequest { Title = "", Description = "Desc", IsCompleted = false };
+            var request = new CreateTodoRequest { Title = "", Description = "Desc", IsCompleted = false };
 
-                var actionResult = controller.CreateTodo(request);
+            // Act
+            var actionResult = controller.CreateTodo(request);
 
-                Assert.IsType<BadRequestObjectResult>(actionResult.Result);
-            }
-            finally
-            {
-                TestHelpers.DeleteFileWithRetries(dbPath);
-            }
+            // Assert
+            Assert.IsType<BadRequestObjectResult>(actionResult.Result);
+            mockService.Verify(s => s.CreateTodo(It.IsAny<Todo>()), Times.Never);
         }
 
         [Fact]
