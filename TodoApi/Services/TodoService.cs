@@ -143,6 +143,11 @@ namespace TodoApi.Services
 
             var rowsAffected = command.ExecuteNonQuery();
 
+            if (rowsAffected == 0)
+            {
+                return null;
+            }
+
             todo.Id = id;
             return todo;
         }

@@ -121,6 +121,22 @@ public class TodoTests
     }
 
     [Fact]
+    public void GetByIdNotFoundTest()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var result = service.GetTodoById(123456789);
+            Assert.Null(result);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
     public void UpdateTest()
     {
         var dbPath = CreateTempDatabasePath();
@@ -151,6 +167,44 @@ public class TodoTests
     }
 
     [Fact]
+    public void CreateWithQuotesTest()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var titleWithQuotes = "O'Reilly \"Special\" Test";
+            var created = service.CreateTodo(new Todo { Title = titleWithQuotes, Description = "desc" });
+
+            var fetched = service.GetTodoById(created.Id);
+            Assert.NotNull(fetched);
+            Assert.Equal(titleWithQuotes, fetched.Title);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
+    public void UpdateNotFoundTest()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var todo = new Todo { Title = "Doesn't matter", Description = "No row", IsCompleted = false };
+
+            var result = service.UpdateTodo(99999, todo);
+            Assert.Null(result);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
     public void DeleteWorks()
     {
         var dbPath = CreateTempDatabasePath();
@@ -160,6 +214,27 @@ public class TodoTests
             var result = service.DeleteTodo(999);
 
             Assert.False(result);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
+    public void DeleteAfterCreateTest()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var created = service.CreateTodo(new Todo { Title = "ToDelete", Description = "temp" });
+
+            var deleted = service.DeleteTodo(created.Id);
+            Assert.True(deleted);
+
+            var fetched = service.GetTodoById(created.Id);
+            Assert.Null(fetched);
         }
         finally
         {
