@@ -7,7 +7,8 @@ using TodoApi.Models.Requests;
 namespace TodoApi.Controllers
 {
     [ApiController]
-    [Route("api/todos")]
+    [ApiVersion("1.0")]
+    [Route("api/v{version:apiVersion}/todos")]
     public class TodoController : ControllerBase
     {
         private readonly ITodoService _todoService;
