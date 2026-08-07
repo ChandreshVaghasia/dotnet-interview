@@ -17,9 +17,9 @@ namespace TodoApi.Tests
             {
                 var todoService = new TodoService(TestHelpers.CreateConfiguration(dbPath));
                 var controller = new TodoController(todoService, NullLogger<TodoController>.Instance);
-                var todo = new Todo { Title = "Test", Description = "Desc" };
+                var request = new TodoApi.Models.Requests.CreateTodoRequest { Title = "Test", Description = "Desc", IsCompleted = false };
 
-                var actionResult = controller.CreateTodo(todo);
+                var actionResult = controller.CreateTodo(request);
 
                 Assert.IsType<CreatedAtActionResult>(actionResult.Result);
                 var createdResult = actionResult.Result as CreatedAtActionResult;
@@ -194,9 +194,9 @@ namespace TodoApi.Tests
                 // model validation failure (ApiController wouldn't run validation when calling method directly)
                 controller.ModelState.AddModelError("Title", "Required");
 
-                var todo = new Todo { Title = "", Description = "Desc" };
+                var request = new TodoApi.Models.Requests.CreateTodoRequest { Title = "", Description = "Desc", IsCompleted = false };
 
-                var actionResult = controller.CreateTodo(todo);
+                var actionResult = controller.CreateTodo(request);
 
                 Assert.IsType<BadRequestObjectResult>(actionResult.Result);
             }

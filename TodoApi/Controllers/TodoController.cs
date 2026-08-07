@@ -21,12 +21,19 @@ namespace TodoApi.Controllers
 
         // POST /api/todos
         [HttpPost]
-        public ActionResult<Todo> CreateTodo([FromBody] Todo todo)
+        public ActionResult<Todo> CreateTodo([FromBody] CreateTodoRequest request)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
+
+            var todo = new Todo
+            {
+                Title = request.Title,
+                Description = request.Description ?? string.Empty,
+                IsCompleted = request.IsCompleted
+            };
 
             var result = _todoService.CreateTodo(todo);
             return CreatedAtAction(nameof(GetTodoById), new { id = result.Id }, result);
