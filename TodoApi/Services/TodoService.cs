@@ -10,8 +10,10 @@ namespace TodoApi.Services
     {
         private string _connectionString = "Data Source=todos.db";
 
-        public TodoService()
+        public TodoService(IConfiguration configuration)
         {
+            _connectionString = configuration.GetConnectionString("TodoDatabase")
+                ?? throw new InvalidOperationException("Connection string 'TodoDatabase' was not found.");
         }
 
         public Todo CreateTodo(Todo todo)

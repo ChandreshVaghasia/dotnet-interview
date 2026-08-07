@@ -3,22 +3,33 @@ using TodoApi.Services;
 using TodoApi.Models;
 using TodoApi.Controllers;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 
 namespace TodoApi.Tests;
 
 public class UnitTest1
 {
+    private static IConfiguration CreateConfiguration()
+    {
+        return new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                { "ConnectionStrings:TodoDatabase", "Data Source=todos.db" }
+            })
+            .Build();
+    }
+
     [Fact]
     public void Test1()
     {
-        var service = new TodoService();
+        var service = new TodoService(CreateConfiguration());
         Assert.True(true);
     }
 
     [Fact]
     public void TestCreateTodo()
     {
-        var service = new TodoService();
+        var service = new TodoService(CreateConfiguration());
         var todo = new Todo
         {
             Title = "Test",
@@ -35,7 +46,7 @@ public class UnitTest1
     [Fact]
     public void TestGetTodo()
     {
-        var service = new TodoService();
+        var service = new TodoService(CreateConfiguration());
         var todos = service.GetAllTodos();
 
         Assert.True(todos.Count > 0);
@@ -44,7 +55,7 @@ public class UnitTest1
     [Fact]
     public void UpdateTest()
     {
-        var service = new TodoService();
+        var service = new TodoService(CreateConfiguration());
         var todo = new Todo
         {
             Title = "Updated",
@@ -59,7 +70,7 @@ public class UnitTest1
     [Fact]
     public void DeleteWorks()
     {
-        var service = new TodoService();
+        var service = new TodoService(CreateConfiguration());
         var result = service.DeleteTodo(999);
 
         Assert.False(result);
@@ -68,7 +79,7 @@ public class UnitTest1
     [Fact]
     public void ControllerTest()
     {
-        var todoService = new TodoService();
+        var todoService = new TodoService(CreateConfiguration());
         var controller = new TodoController(todoService);
         var todo = new Todo { Title = "Test", Description = "Desc" };
 
@@ -80,7 +91,7 @@ public class UnitTest1
     [Fact]
     public void TestEverything()
     {
-        var service = new TodoService();
+        var service = new TodoService(CreateConfiguration());
 
         var todo1 = service.CreateTodo(new Todo { Title = "1", Description = "D1" });
         var todo2 = service.CreateTodo(new Todo { Title = "2", Description = "D2" });
