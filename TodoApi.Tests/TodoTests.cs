@@ -60,13 +60,22 @@ public class TodoTests
     }
 
     [Fact]
-    public void Test1()
+    public void ServiceConstructionCreatesDatabaseAndTable()
     {
         var dbPath = CreateTempDatabasePath();
         try
         {
             var service = new TodoService(CreateConfiguration(dbPath));
-            Assert.True(true);
+            Assert.NotNull(service);
+
+            // On construction the service ensures the DB and table exist.
+            // GetAllTodos should return an empty list for a fresh DB.
+            var todos = service.GetAllTodos();
+            Assert.NotNull(todos);
+            Assert.Empty(todos);
+
+            // The sqlite file should exist on disk.
+            Assert.True(File.Exists(dbPath));
         }
         finally
         {
@@ -243,7 +252,7 @@ public class TodoTests
     }
 
     [Fact]
-    public void ControllerTest()
+    public void Controller_Create_ReturnsCreated()
     {
         var dbPath = CreateTempDatabasePath();
         try
@@ -261,6 +270,178 @@ public class TodoTests
             var createdTodo = createdResult.Value as Todo;
             Assert.NotNull(createdTodo);
             Assert.True(createdTodo.Id > 0);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Controller_GetById_ReturnsOk_WhenExists()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var created = service.CreateTodo(new Todo { Title = "X", Description = "Y" });
+
+            var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+
+            var actionResult = controller.GetTodoById(created.Id);
+
+            Assert.IsType<OkObjectResult>(actionResult.Result);
+            var ok = actionResult.Result as OkObjectResult;
+            Assert.NotNull(ok);
+            var todo = ok.Value as Todo;
+            Assert.NotNull(todo);
+            Assert.Equal(created.Id, todo.Id);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Controller_GetById_ReturnsNotFound_WhenMissing()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+
+            var actionResult = controller.GetTodoById(123456);
+
+            Assert.IsType<NotFoundResult>(actionResult.Result);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Controller_Update_ReturnsNotFound_ForMissingId()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+
+            var request = new TodoApi.Models.Requests.UpdateTodoRequest
+            {
+                Title = "Nope",
+                Description = "No row",
+                IsCompleted = false
+            };
+
+            var actionResult = controller.UpdateTodo(99999, request);
+
+            Assert.IsType<NotFoundResult>(actionResult.Result);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Controller_Update_ReturnsOk_ForExisting()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var created = service.CreateTodo(new Todo { Title = "A", Description = "B" });
+
+            var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+
+            var request = new TodoApi.Models.Requests.UpdateTodoRequest
+            {
+                Title = "Updated",
+                Description = "Updated Desc",
+                IsCompleted = true
+            };
+
+            var actionResult = controller.UpdateTodo(created.Id, request);
+
+            Assert.IsType<OkObjectResult>(actionResult.Result);
+            var ok = actionResult.Result as OkObjectResult;
+            Assert.NotNull(ok);
+            var updated = ok.Value as Todo;
+            Assert.NotNull(updated);
+            Assert.Equal(created.Id, updated.Id);
+            Assert.Equal("Updated", updated.Title);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Controller_Delete_ReturnsNoContent_WhenDeleted()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var created = service.CreateTodo(new Todo { Title = "ToDelete", Description = "d" });
+
+            var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+
+            var result = controller.DeleteTodo(created.Id);
+
+            Assert.IsType<NoContentResult>(result);
+            // confirm it's gone
+            var get = controller.GetTodoById(created.Id);
+            Assert.IsType<NotFoundResult>(get.Result);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Controller_Delete_ReturnsNotFound_WhenMissing()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var service = new TodoService(CreateConfiguration(dbPath));
+            var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+
+            var result = controller.DeleteTodo(99999);
+
+            Assert.IsType<NotFoundResult>(result);
+        }
+        finally
+        {
+            DeleteFileWithRetries(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Controller_Create_ReturnsBadRequest_ForInvalidModel()
+    {
+        var dbPath = CreateTempDatabasePath();
+        try
+        {
+            var todoService = new TodoService(CreateConfiguration(dbPath));
+            var controller = new TodoController(todoService, NullLogger<TodoController>.Instance);
+
+            // model validation failure (ApiController wouldn't run validation when calling method directly)
+            controller.ModelState.AddModelError("Title", "Required");
+
+            var todo = new Todo { Title = "", Description = "Desc" };
+
+            var actionResult = controller.CreateTodo(todo);
+
+            Assert.IsType<BadRequestObjectResult>(actionResult.Result);
         }
         finally
         {
