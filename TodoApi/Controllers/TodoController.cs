@@ -58,9 +58,6 @@ namespace TodoApi.Controllers
                 return BadRequest(ModelState);
             }
 
-            var existing = _todoService.GetTodoById(id);
-            if (existing == null) return NotFound();
-
             var todo = new Todo
             {
                 Title = request.Title,
@@ -69,6 +66,8 @@ namespace TodoApi.Controllers
             };
 
             var updated = _todoService.UpdateTodo(id, todo);
+            if (updated == null) return NotFound();
+
             return Ok(updated);
         }
 

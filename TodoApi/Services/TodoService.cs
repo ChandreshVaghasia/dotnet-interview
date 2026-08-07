@@ -96,7 +96,7 @@ namespace TodoApi.Services
             return todos;
         }
 
-        public Todo GetTodoById(int id)
+        public Todo? GetTodoById(int id)
         {
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
@@ -125,7 +125,7 @@ namespace TodoApi.Services
             return null;
         }
 
-        public Todo UpdateTodo(int id, Todo todo)
+        public Todo? UpdateTodo(int id, Todo todo)
         {
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();

@@ -25,15 +25,15 @@ namespace TodoApi.Services
         /// </summary>
         /// <param name="id">Todo identifier.</param>
         /// <returns>The matching todo item if found otherwise null.</returns>
-        Todo GetTodoById(int id);
+        Todo? GetTodoById(int id);
 
         /// <summary>
         /// Updates an existing todo item.
         /// </summary>
         /// <param name="id">Todo identifier.</param>
         /// <param name="todo">Updated todo information.</param>
-        /// <returns>The updated todo item.</returns>
-        Todo UpdateTodo(int id, Todo todo);
+        /// <returns>The updated todo item, or null if the item was not found.</returns>
+        Todo? UpdateTodo(int id, Todo todo);
 
         /// <summary>
         /// Deletes a todo item.
