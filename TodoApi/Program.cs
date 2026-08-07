@@ -12,7 +12,7 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-InitializeDatabase();
+InitializeDatabase(builder.Configuration);
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -29,9 +29,9 @@ app.MapControllers();
 
 app.Run();
 
-void InitializeDatabase()
+void InitializeDatabase(IConfiguration configuration)
 {
-    var connectionString = "Data Source=todos.db";
+    var connectionString = configuration.GetConnectionString("TodoDatabase") ?? "Data Source=todos.db";
     using var connection = new SqliteConnection(connectionString);
     connection.Open();
 
