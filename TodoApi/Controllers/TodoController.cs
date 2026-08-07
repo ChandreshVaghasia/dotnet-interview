@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using TodoApi.Models;
 using TodoApi.Services;
+using TodoApi.Models.Requests;
 
 namespace TodoApi.Controllers
 {
@@ -98,23 +99,5 @@ namespace TodoApi.Controllers
                 return BadRequest(ex.Message);
             }
         }
-    }
-
-    public class GetTodoRequest
-    {
-        public int? Id { get; set; }
-    }
-
-    public class UpdateTodoRequest
-    {
-        public int Id { get; set; }
-        public string Title { get; set; }
-        public string Description { get; set; }
-        public bool IsCompleted { get; set; }
-    }
-
-    public class DeleteTodoRequest
-    {
-        public int Id { get; set; }
     }
 }
