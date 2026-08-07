@@ -220,5 +220,32 @@ namespace TodoApi.Tests
                 TestHelpers.DeleteFileWithRetries(dbPath);
             }
         }
+
+        // New concurrency-related test: service throws ConcurrencyException when version mismatches
+        [Fact]
+        public void Update_ThrowsConcurrencyException_OnVersionMismatch()
+        {
+            var dbPath = TestHelpers.CreateTempDatabasePath();
+            try
+            {
+                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
+
+                // create an item
+                var created = service.CreateTodo(new Todo { Title = "Concurrent", Description = "initial" });
+
+                // another client updates the row (advances the version)
+                var otherUpdate = service.UpdateTodo(created.Id, new Todo { Title = "OtherUpdate", Description = "x", IsCompleted = false }, created.Version);
+                Assert.NotNull(otherUpdate);
+                Assert.Equal(created.Version + 1, otherUpdate.Version);
+
+                // attempt to update with the stale version should throw ConcurrencyException
+                var staleUpdate = new Todo { Title = "Stale", Description = "stale attempt", IsCompleted = true };
+                Assert.Throws<ConcurrencyException>(() => service.UpdateTodo(created.Id, staleUpdate, created.Version));
+            }
+            finally
+            {
+                TestHelpers.DeleteFileWithRetries(dbPath);
+            }
+        }
     }
 }

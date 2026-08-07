@@ -23,9 +23,10 @@ namespace TodoApi.Services
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
+            // Create table for new DBs (includes Version column)
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS Todos (
+                    CREATE TABLE IF NOT EXISTS Todos (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     Title TEXT NOT NULL,
                     Description TEXT,
@@ -35,6 +36,31 @@ namespace TodoApi.Services
                 );
             ";
             command.ExecuteNonQuery();
+
+            // For existing DBs, ensure the Version column is present.
+            // PRAGMA table_info returns rows: cid, name, type, notnull, dflt_value, pk
+            using var pragmaCmd = connection.CreateCommand();
+            pragmaCmd.CommandText = "PRAGMA table_info('Todos');";
+            using var reader = pragmaCmd.ExecuteReader();
+            bool hasVersion = false;
+            while (reader.Read())
+            {
+                // column name is at index 1
+                var columnName = reader.GetString(1);
+                if (string.Equals(columnName, "Version", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasVersion = true;
+                    break;
+                }
+            }
+            reader.Close();
+
+            if (!hasVersion)
+            {
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE Todos ADD COLUMN Version INTEGER NOT NULL DEFAULT 1;";
+                alterCmd.ExecuteNonQuery();
+            }
         }
 
         public Todo CreateTodo(Todo todo)

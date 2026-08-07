@@ -4,6 +4,7 @@ using TodoApi.Models;
 using TodoApi.Controllers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.Http; // for StatusCodes
 
 namespace TodoApi.Tests
 {
@@ -136,6 +137,50 @@ namespace TodoApi.Tests
                 Assert.Equal(created.Id, updated.Id);
                 Assert.Equal("Updated", updated.Title);
                 Assert.Equal(created.Version + 1, updated.Version);
+            }
+            finally
+            {
+                TestHelpers.DeleteFileWithRetries(dbPath);
+            }
+        }
+
+        [Fact]
+        public void Controller_Update_ReturnsConflict_ForVersionMismatch()
+        {
+            var dbPath = TestHelpers.CreateTempDatabasePath();
+            try
+            {
+                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
+                var controller = new TodoController(service, NullLogger<TodoController>.Instance);
+
+                // Create an item
+                var created = service.CreateTodo(new Todo { Title = "Concurrent", Description = "initial" });
+
+                // Simulate another client updating the row first (increments Version)
+                var otherUpdate = service.UpdateTodo(created.Id, new Todo { Title = "OtherUpdate", Description = "x", IsCompleted = false }, created.Version);
+                Assert.NotNull(otherUpdate);
+                Assert.Equal(created.Version + 1, otherUpdate.Version);
+
+                // Now attempt to update with the stale version (created.Version)
+                var request = new TodoApi.Models.Requests.UpdateTodoRequest
+                {
+                    Title = "MyUpdate",
+                    Description = "attempt with stale version",
+                    IsCompleted = true,
+                    Version = created.Version // stale
+                };
+
+                var actionResult = controller.UpdateTodo(created.Id, request);
+
+                // Expect a 409 Conflict
+                Assert.IsType<ConflictObjectResult>(actionResult.Result);
+                var conflict = actionResult.Result as ConflictObjectResult;
+                Assert.NotNull(conflict);
+
+                // Controller returns ProblemDetails in the Conflict body
+                var problem = conflict.Value as ProblemDetails;
+                Assert.NotNull(problem);
+                Assert.Equal(StatusCodes.Status409Conflict, problem.Status);
             }
             finally
             {
