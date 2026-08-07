@@ -1,4 +1,6 @@
-﻿namespace TodoApi.Models.Requests
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace TodoApi.Models.Requests
 {
     /// <summary>
     /// Represents a request to update an existing Todo item.
@@ -7,8 +9,11 @@
     {
         public int Id { get; set; }
 
+        [Required]
+        [StringLength(200)]
         public string Title { get; set; }
 
+        [StringLength(1000)]
         public string Description { get; set; }
 
         public bool IsCompleted { get; set; }
