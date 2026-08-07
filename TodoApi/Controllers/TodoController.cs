@@ -40,11 +40,12 @@ namespace TodoApi.Controllers
         }
 
         // GET /api/todos
+        // Supports pagination: pageNumber (1 based) and pageSize (default 20)
         [HttpGet]
-        public ActionResult<List<Todo>> GetAllTodos()
+        public ActionResult<PaginatedResult<Todo>> GetAllTodos([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
         {
-            var todos = _todoService.GetAllTodos();
-            return Ok(todos);
+            var paged = _todoService.GetTodosPaged(pageNumber, pageSize);
+            return Ok(paged);
         }
 
         // GET /api/todos/{id}
@@ -80,7 +81,6 @@ namespace TodoApi.Controllers
             }
             catch (ConcurrencyException ex)
             {
-                // Return 409 Conflict with a problem details body
                 var problem = new ProblemDetails
                 {
                     Title = "Conflict",

@@ -1,4 +1,7 @@
-﻿using Xunit;
+﻿using System;
+using System.Collections.Generic;
+using Moq;
+using Xunit;
 using TodoApi.Services;
 using TodoApi.Models;
 using TodoApi.Controllers;
@@ -253,6 +256,63 @@ namespace TodoApi.Tests
             {
                 TestHelpers.DeleteFileWithRetries(dbPath);
             }
+        }
+
+        [Fact]
+        public void GetAllTodos_UsesDefaultPagination_WhenNoQueryProvided()
+        {
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            var sampleItems = new List<Todo>
+            {
+                new Todo { Id = 1, Title = "A", CreatedAt = DateTime.UtcNow, Version = 1 }
+            };
+            var paged = new PaginatedResult<Todo>(sampleItems, totalCount: 1, pageNumber: 1, pageSize: 20);
+
+            mockService.Setup(s => s.GetTodosPaged(1, 20)).Returns(paged);
+
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
+
+            // Act
+            var actionResult = controller.GetAllTodos();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+            var returned = Assert.IsType<PaginatedResult<Todo>>(okResult.Value);
+            Assert.Equal(1, returned.TotalCount);
+            Assert.Single(returned.Items);
+
+            mockService.Verify(s => s.GetTodosPaged(1, 20), Times.Once);
+        }
+
+        [Fact]
+        public void GetAllTodos_ForwardsQueryParameters_ToService()
+        {
+            // Arrange
+            var mockService = new Mock<ITodoService>(MockBehavior.Strict);
+            var sampleItems = new List<Todo>
+            {
+                new Todo { Id = 10, Title = "Paged", CreatedAt = DateTime.UtcNow, Version = 1 }
+            };
+            var paged = new PaginatedResult<Todo>(sampleItems, totalCount: 50, pageNumber: 2, pageSize: 5);
+
+            mockService.Setup(s => s.GetTodosPaged(2, 5)).Returns(paged);
+
+            var controller = new TodoController(mockService.Object, NullLogger<TodoController>.Instance);
+
+            // Act
+            var actionResult = controller.GetAllTodos(pageNumber: 2, pageSize: 5);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+            var returned = Assert.IsType<PaginatedResult<Todo>>(okResult.Value);
+            Assert.Equal(50, returned.TotalCount);
+            Assert.Equal(2, returned.PageNumber);
+            Assert.Equal(5, returned.PageSize);
+            Assert.Single(returned.Items);
+            Assert.Equal(10, returned.Items[0].Id);
+
+            mockService.Verify(s => s.GetTodosPaged(2, 5), Times.Once);
         }
     }
 }

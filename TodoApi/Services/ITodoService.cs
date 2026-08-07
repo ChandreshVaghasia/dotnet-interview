@@ -21,6 +21,14 @@ namespace TodoApi.Services
         List<Todo> GetAllTodos();
 
         /// <summary>
+        /// Returns a paginated list of Todos.
+        /// </summary>
+        /// <param name="pageNumber">1-based page number.</param>
+        /// <param name="pageSize">Items per page.</param>
+        /// <returns>PaginatedResult of Todos.</returns>
+        PaginatedResult<Todo> GetTodosPaged(int pageNumber, int pageSize);
+
+        /// <summary>
         /// Gets a todo item by its identifier.
         /// </summary>
         /// <param name="id">Todo identifier.</param>

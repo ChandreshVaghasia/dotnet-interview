@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
 using TodoApi.Models;
 
 namespace TodoApi.Services
@@ -9,6 +10,7 @@ namespace TodoApi.Services
     public class TodoService : ITodoService
     {
         private readonly string _connectionString;
+        private const int MaxPageSize = 100;
 
         public TodoService(IConfiguration configuration)
         {
@@ -26,7 +28,7 @@ namespace TodoApi.Services
             // Create table for new DBs (includes Version column)
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                    CREATE TABLE IF NOT EXISTS Todos (
+                CREATE TABLE IF NOT EXISTS Todos (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     Title TEXT NOT NULL,
                     Description TEXT,
@@ -38,14 +40,12 @@ namespace TodoApi.Services
             command.ExecuteNonQuery();
 
             // For existing DBs, ensure the Version column is present.
-            // PRAGMA table_info returns rows: cid, name, type, notnull, dflt_value, pk
             using var pragmaCmd = connection.CreateCommand();
             pragmaCmd.CommandText = "PRAGMA table_info('Todos');";
             using var reader = pragmaCmd.ExecuteReader();
             bool hasVersion = false;
             while (reader.Read())
             {
-                // column name is at index 1
                 var columnName = reader.GetString(1);
                 if (string.Equals(columnName, "Version", StringComparison.OrdinalIgnoreCase))
                 {
@@ -126,6 +126,68 @@ namespace TodoApi.Services
             }
 
             return todos;
+        }
+
+        /// <summary>
+        /// Returns Todos in a paginated manner using LIMIT/OFFSET and a separate COUNT query.
+        /// </summary>
+        public PaginatedResult<Todo> GetTodosPaged(int pageNumber, int pageSize)
+        {
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 20;
+            if (pageSize > MaxPageSize) pageSize = MaxPageSize;
+
+            var offset = (pageNumber - 1) * pageSize;
+            var items = new List<Todo>();
+            int totalCount = 0;
+
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+
+            // Get total count
+            using (var countCmd = connection.CreateCommand())
+            {
+                countCmd.CommandText = "SELECT COUNT(1) FROM Todos;";
+                var countObj = countCmd.ExecuteScalar();
+                totalCount = Convert.ToInt32(countObj);
+            }
+
+            // Get page items
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT Id, Title, Description, IsCompleted, CreatedAt, Version
+                    FROM Todos
+                    ORDER BY Id ASC
+                    LIMIT @limit OFFSET @offset;
+                ";
+                cmd.Parameters.AddWithValue("@limit", pageSize);
+                cmd.Parameters.AddWithValue("@offset", offset);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var id = reader.GetInt32(0);
+                    var title = reader.GetString(1);
+                    var description = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
+                    var isCompleted = reader.GetInt32(3) == 1;
+                    var createdAtText = reader.IsDBNull(4) ? DateTime.UtcNow.ToString("o") : reader.GetString(4);
+                    var createdAt = DateTime.Parse(createdAtText, null, System.Globalization.DateTimeStyles.RoundtripKind);
+                    var version = reader.IsDBNull(5) ? 1 : reader.GetInt32(5);
+
+                    items.Add(new Todo
+                    {
+                        Id = id,
+                        Title = title,
+                        Description = description,
+                        IsCompleted = isCompleted,
+                        CreatedAt = createdAt,
+                        Version = version
+                    });
+                }
+            }
+
+            return new PaginatedResult<Todo>(items, totalCount, pageNumber, pageSize);
         }
 
         public Todo? GetTodoById(int id)

@@ -247,5 +247,72 @@ namespace TodoApi.Tests
                 TestHelpers.DeleteFileWithRetries(dbPath);
             }
         }
+
+        // --- Pagination service tests ---
+
+        [Fact]
+        public void GetTodosPaged_ReturnsExpectedPageAndMetadata()
+        {
+            var dbPath = TestHelpers.CreateTempDatabasePath();
+            try
+            {
+                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
+
+                // Create 25 items
+                for (int i = 1; i <= 25; i++)
+                {
+                    service.CreateTodo(new Todo { Title = $"T{i}", Description = $"D{i}" });
+                }
+
+                // Page 2, pageSize 10 => items 11..20
+                var pageNumber = 2;
+                var pageSize = 10;
+                var result = service.GetTodosPaged(pageNumber, pageSize);
+
+                Assert.NotNull(result);
+                Assert.Equal(pageNumber, result.PageNumber);
+                Assert.Equal(pageSize, result.PageSize);
+                Assert.Equal(25, result.TotalCount);
+                Assert.Equal(3, result.TotalPages);
+                Assert.Equal(pageSize, result.Items.Count);
+
+                var firstOnPage = result.Items.First();
+                Assert.Equal("T11", firstOnPage.Title);
+            }
+            finally
+            {
+                TestHelpers.DeleteFileWithRetries(dbPath);
+            }
+        }
+
+        [Fact]
+        public void GetTodosPaged_NormalizesBounds_DefaultsApplied()
+        {
+            var dbPath = TestHelpers.CreateTempDatabasePath();
+            try
+            {
+                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
+
+                // Create 5 items only
+                for (int i = 1; i <= 5; i++)
+                {
+                    service.CreateTodo(new Todo { Title = $"Item{i}", Description = $"D{i}" });
+                }
+
+                // Pass invalid pageNumber and pageSize (service normalizes)
+                var result = service.GetTodosPaged(0, 0);
+
+                // Default pageNumber = 1, default pageSize = 20 (so all 5 returned)
+                Assert.Equal(1, result.PageNumber);
+                Assert.Equal(20, result.PageSize);
+                Assert.Equal(5, result.TotalCount);
+                Assert.Equal(1, result.TotalPages);
+                Assert.Equal(5, result.Items.Count);
+            }
+            finally
+            {
+                TestHelpers.DeleteFileWithRetries(dbPath);
+            }
+        }
     }
 }
