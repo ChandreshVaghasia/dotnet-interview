@@ -1,17 +1,58 @@
+# .gitignore for a .NET (SDK-style) solution (safe, merged)
+
+# Visual Studio / IDE
+.vs/
+.vscode/
+.idea/
+
 # User-specific files
 *.suo
 *.user
-*.userosscache
+*.userprefs
 *.sln.docstates
+*.userosscache
 
-# Visual Studio 2015/2017 cache/options directory
-.vs/
+# Build outputs
+/bin/
+*/bin/
+**/bin/
+/obj/
+*/obj/
+**/obj/
 
-# Build results
+# Build configurations / architecture
 [Dd]ebug/
 [Rr]elease/
 x64/
 x86/
 
-# NuGet Packages
+# NuGet / MSBuild generated files
+project.assets.json
+project.nuget.cache
+*.csproj.nuget.dgspec.json
+*.csproj.nuget.g.props
+*.csproj.nuget.g.targets
 *.nupkg
+packages/
+
+# Test output / coverage
+/TestResults/
+/coverage/
+
+# Local DBs and DB journals
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs and caches
+*.log
+*.cache
+
+# Publish / deployment artifacts
+*.publishsettings
+*.deployment
+
+# OS files
+Thumbs.db
+.DS_Store
