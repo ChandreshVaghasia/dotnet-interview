@@ -314,5 +314,106 @@ namespace TodoApi.Tests
                 TestHelpers.DeleteFileWithRetries(dbPath);
             }
         }
+
+        [Fact]
+        public void GetTodosPaged_CachesResults_And_InvalidatesOnCreate()
+        {
+            var dbPath = TestHelpers.CreateTempDatabasePath();
+            try
+            {
+                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
+
+                // Create initial items
+                for (int i = 1; i <= 3; i++)
+                    service.CreateTodo(new Todo { Title = $"T{i}", Description = $"D{i}" });
+
+                // First call caches the page
+                var page1 = service.GetTodosPaged(1, 10);
+
+                // Second call should return the same cached object instance
+                var page2 = service.GetTodosPaged(1, 10);
+                Assert.Same(page1, page2);
+
+                var prevTotal = page1.TotalCount;
+
+                // Create a new item -> should bump the cache token and invalidate pages
+                service.CreateTodo(new Todo { Title = "New", Description = "added" });
+
+                var pageAfterCreate = service.GetTodosPaged(1, 10);
+
+                // New page object expected (old cached page should be stale)
+                Assert.NotSame(page1, pageAfterCreate);
+                Assert.Equal(prevTotal + 1, pageAfterCreate.TotalCount);
+            }
+            finally
+            {
+                TestHelpers.DeleteFileWithRetries(dbPath);
+            }
+        }
+
+        [Fact]
+        public void GetTodoById_CachesResult_And_InvalidatesOnUpdate()
+        {
+            var dbPath = TestHelpers.CreateTempDatabasePath();
+            try
+            {
+                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
+
+                // Create item
+                var created = service.CreateTodo(new Todo { Title = "Original", Description = "orig" });
+
+                // First read caches the item
+                var t1 = service.GetTodoById(created.Id);
+                Assert.NotNull(t1);
+
+                // Second read should be served from cache (same instance)
+                var t2 = service.GetTodoById(created.Id);
+                Assert.Same(t1, t2);
+
+                // Update the item using current version
+                var updatedTodo = new Todo { Title = "Updated", Description = "updated", IsCompleted = true };
+                var updated = service.UpdateTodo(created.Id, updatedTodo, created.Version);
+                Assert.NotNull(updated);
+                Assert.Equal(created.Version + 1, updated!.Version);
+
+                // After update, cache should be invalidated (new token), GetTodoById should return updated data (different instance)
+                var t3 = service.GetTodoById(created.Id);
+                Assert.NotNull(t3);
+                Assert.NotSame(t1, t3); // cached old instance was invalidated
+                Assert.Equal("Updated", t3!.Title);
+                Assert.Equal(created.Version + 1, t3.Version);
+            }
+            finally
+            {
+                TestHelpers.DeleteFileWithRetries(dbPath);
+            }
+        }
+
+        [Fact]
+        public void GetTodoById_InvalidatedOnDelete_ReturnsNullAfterDelete()
+        {
+            var dbPath = TestHelpers.CreateTempDatabasePath();
+            try
+            {
+                var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
+
+                // Create and cache item
+                var created = service.CreateTodo(new Todo { Title = "ToDelete", Description = "tmp" });
+                var t1 = service.GetTodoById(created.Id);
+                Assert.NotNull(t1);
+
+                // Delete the item (this bumps the cache token)
+                var deleted = service.DeleteTodo(created.Id);
+                Assert.True(deleted);
+
+                // After delete, GetTodoById should return null
+                var after = service.GetTodoById(created.Id);
+                Assert.Null(after);
+            }
+            finally
+            {
+                TestHelpers.DeleteFileWithRetries(dbPath);
+            }
+        }
     }
 }

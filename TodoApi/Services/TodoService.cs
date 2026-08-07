@@ -1,21 +1,32 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using TodoApi.Models;
 
 namespace TodoApi.Services
 {
     /// <summary>
-    /// Provides CRUD operations for Todo items with optimistic concurrency.
+    /// Provides CRUD operations for Todo items with optimistic concurrency and in-memory caching.
     /// </summary>
     public class TodoService : ITodoService
     {
         private readonly string _connectionString;
+        private readonly IMemoryCache _cache;
+        private readonly object _cacheLock = new();
         private const int MaxPageSize = 100;
 
-        public TodoService(IConfiguration configuration)
+        // Cache settings (adjust as needed)
+        private static readonly TimeSpan PageCacheDuration = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan ItemCacheDuration = TimeSpan.FromMinutes(5);
+        private const string CacheVersionKey = "todos:version";
+
+        public TodoService(IConfiguration configuration, IMemoryCache? cache = null)
         {
             _connectionString = configuration.GetConnectionString("TodoDatabase")
                 ?? throw new InvalidOperationException("Connection string 'TodoDatabase' was not found.");
+
+            // If cache not provided (tests), create a local MemoryCache instance
+            _cache = cache ?? new MemoryCache(new MemoryCacheOptions());
 
             EnsureDatabaseAndTable();
         }
@@ -63,6 +74,46 @@ namespace TodoApi.Services
             }
         }
 
+        // Get the current cache version token (creates it if missing)
+        private long GetVersionToken()
+        {
+            if (_cache.TryGetValue<long>(CacheVersionKey, out var token))
+            {
+                return token;
+            }
+
+            lock (_cacheLock)
+            {
+                if (_cache.TryGetValue<long>(CacheVersionKey, out token))
+                {
+                    return token;
+                }
+
+                token = 0L;
+                _cache.Set(CacheVersionKey, token);
+                return token;
+            }
+        }
+
+        // Increment and return the new token (used to invalidate old cache keys)
+        private long BumpVersionToken()
+        {
+            lock (_cacheLock)
+            {
+                if (!_cache.TryGetValue<long>(CacheVersionKey, out var token))
+                {
+                    token = 0L;
+                }
+
+                token++;
+                _cache.Set(CacheVersionKey, token);
+                return token;
+            }
+        }
+
+        private string GetItemKey(int id, long token) => $"todo:{id}:v{token}";
+        private string GetPageKey(int pageNumber, int pageSize, long token) => $"todos:page:{pageNumber}:{pageSize}:v{token}";
+
         public Todo CreateTodo(Todo todo)
         {
             using var connection = new SqliteConnection(_connectionString);
@@ -91,11 +142,19 @@ namespace TodoApi.Services
             // DB default Version = 1
             todo.Version = 1;
 
+            // Invalidate cached pages by bumping the cache version token
+            var newToken = BumpVersionToken();
+
+            // Optionally cache the created item under the new token
+            var itemKey = GetItemKey(todo.Id, newToken);
+            _cache.Set(itemKey, todo, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ItemCacheDuration });
+
             return todo;
         }
 
         public List<Todo> GetAllTodos()
         {
+            // Non-paged full list - we may choose to not cache this, or reuse paging with large page size.
             var todos = new List<Todo>();
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
@@ -130,6 +189,7 @@ namespace TodoApi.Services
 
         /// <summary>
         /// Returns Todos in a paginated manner using LIMIT/OFFSET and a separate COUNT query.
+        /// Uses IMemoryCache for pages; pages are invalidated implicitly by bumping the cache version token on mutations.
         /// </summary>
         public PaginatedResult<Todo> GetTodosPaged(int pageNumber, int pageSize)
         {
@@ -140,6 +200,15 @@ namespace TodoApi.Services
             var offset = (pageNumber - 1) * pageSize;
             var items = new List<Todo>();
             int totalCount = 0;
+
+            var token = GetVersionToken();
+            var pageKey = GetPageKey(pageNumber, pageSize, token);
+
+            // Try cached page first
+            if (_cache.TryGetValue<PaginatedResult<Todo>>(pageKey, out var cached))
+            {
+                return cached;
+            }
 
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
@@ -187,11 +256,24 @@ namespace TodoApi.Services
                 }
             }
 
-            return new PaginatedResult<Todo>(items, totalCount, pageNumber, pageSize);
+            var result = new PaginatedResult<Todo>(items, totalCount, pageNumber, pageSize);
+
+            // Cache the page under the current token
+            _cache.Set(pageKey, result, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = PageCacheDuration });
+
+            return result;
         }
 
         public Todo? GetTodoById(int id)
         {
+            var token = GetVersionToken();
+            var itemKey = GetItemKey(id, token);
+
+            if (_cache.TryGetValue<Todo>(itemKey, out var cachedTodo))
+            {
+                return cachedTodo;
+            }
+
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
 
@@ -207,7 +289,7 @@ namespace TodoApi.Services
                 var createdAt = DateTime.Parse(createdAtText, null, System.Globalization.DateTimeStyles.RoundtripKind);
                 var version = reader.IsDBNull(5) ? 1 : reader.GetInt32(5);
 
-                return new Todo
+                var todo = new Todo
                 {
                     Id = reader.GetInt32(0),
                     Title = reader.GetString(1),
@@ -216,6 +298,10 @@ namespace TodoApi.Services
                     CreatedAt = createdAt,
                     Version = version
                 };
+
+                _cache.Set(itemKey, todo, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ItemCacheDuration });
+
+                return todo;
             }
 
             return null;
@@ -261,6 +347,12 @@ namespace TodoApi.Services
             // Update successful, incremented version on DB: set returned object's Version to expectedVersion + 1
             todo.Id = id;
             todo.Version = expectedVersion + 1;
+
+            // Invalidate pages and set updated item cache under new token
+            var newToken = BumpVersionToken();
+            var itemKey = GetItemKey(id, newToken);
+            _cache.Set(itemKey, todo, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ItemCacheDuration });
+
             return todo;
         }
 
@@ -274,7 +366,15 @@ namespace TodoApi.Services
             command.Parameters.AddWithValue("@id", id);
 
             var rowsAffected = command.ExecuteNonQuery();
-            return rowsAffected > 0;
+
+            if (rowsAffected > 0)
+            {
+                // Invalidate pages by bumping token, item caches for old tokens become stale.
+                BumpVersionToken();
+                return true;
+            }
+
+            return false;
         }
     }
 }
