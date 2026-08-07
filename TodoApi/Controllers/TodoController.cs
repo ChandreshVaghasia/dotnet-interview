@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using TodoApi.Models;
 using TodoApi.Services;
 using TodoApi.Models.Requests;
@@ -6,98 +7,78 @@ using TodoApi.Models.Requests;
 namespace TodoApi.Controllers
 {
     [ApiController]
-    [Route("api")]
+    [Route("api/todos")]
     public class TodoController : ControllerBase
     {
         private readonly ITodoService _todoService;
-        public TodoController(ITodoService todoService)
+        private readonly ILogger<TodoController> _logger;
+
+        public TodoController(ITodoService todoService, ILogger<TodoController> logger)
         {
             _todoService = todoService;
+            _logger = logger;
         }
 
-        [HttpPost("createTodo")]
-        public IActionResult CreateTodo([FromBody] Todo todo)
+        // POST /api/todos
+        [HttpPost]
+        public ActionResult<Todo> CreateTodo([FromBody] Todo todo)
         {
-            try
+            if (!ModelState.IsValid)
             {
-                var result = _todoService.CreateTodo(todo);
-                return Ok(result);
+                return BadRequest(ModelState);
             }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+
+            var result = _todoService.CreateTodo(todo);
+            return CreatedAtAction(nameof(GetTodoById), new { id = result.Id }, result);
         }
 
-        [HttpPost("getTodo")]
-        public IActionResult GetTodo([FromBody] GetTodoRequest request)
+        // GET /api/todos
+        [HttpGet]
+        public ActionResult<List<Todo>> GetAllTodos()
         {
-            try
-            {
-                if (request.Id.HasValue)
-                {
-                    var todo = _todoService.GetTodoById(request.Id.Value);
-                    if (todo == null)
-                    {
-                        return NotFound();
-                    }
-                    return Ok(todo);
-                }
-                else
-                {
-                    var todos = _todoService.GetAllTodos();
-                    return Ok(todos);
-                }
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+            var todos = _todoService.GetAllTodos();
+            return Ok(todos);
         }
 
-        [HttpPost("updateTodo")]
-        public IActionResult UpdateTodo([FromBody] UpdateTodoRequest request)
+        // GET /api/todos/{id}
+        [HttpGet("{id:int}")]
+        public ActionResult<Todo> GetTodoById(int id)
         {
-            try
-            {
-                var existingTodo = _todoService.GetTodoById(request.Id);
-                if (existingTodo == null)
-                {
-                    return NotFound();
-                }
-
-                var todo = new Todo
-                {
-                    Title = request.Title,
-                    Description = request.Description,
-                    IsCompleted = request.IsCompleted
-                };
-
-                var result = _todoService.UpdateTodo(request.Id, todo);
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+            var todo = _todoService.GetTodoById(id);
+            if (todo == null) return NotFound();
+            return Ok(todo);
         }
 
-        [HttpPost("deleteTodo")]
-        public IActionResult DeleteTodo([FromBody] DeleteTodoRequest request)
+        // PUT /api/todos/{id}
+        [HttpPut("{id:int}")]
+        public ActionResult<Todo> UpdateTodo(int id, [FromBody] UpdateTodoRequest request)
         {
-            try
+            if (!ModelState.IsValid)
             {
-                var result = _todoService.DeleteTodo(request.Id);
-                if (result)
-                {
-                    return Ok(new { message = "Todo deleted successfully" });
-                }
-                return NotFound();
+                return BadRequest(ModelState);
             }
-            catch (Exception ex)
+
+            var existing = _todoService.GetTodoById(id);
+            if (existing == null) return NotFound();
+
+            var todo = new Todo
             {
-                return BadRequest(ex.Message);
-            }
+                Title = request.Title,
+                Description = request.Description,
+                IsCompleted = request.IsCompleted
+            };
+
+            var updated = _todoService.UpdateTodo(id, todo);
+            return Ok(updated);
+        }
+
+        // DELETE /api/todos/{id}
+        [HttpDelete("{id:int}")]
+        public IActionResult DeleteTodo(int id)
+        {
+            var deleted = _todoService.DeleteTodo(id);
+            if (!deleted) return NotFound();
+            return NoContent();
         }
     }
 }
