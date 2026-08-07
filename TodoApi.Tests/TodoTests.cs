@@ -8,10 +8,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Threading;
 
 namespace TodoApi.Tests;
 
-public class UnitTest1
+public class TodoTests
 {
     private static IConfiguration CreateConfiguration(string dbFilePath)
     {
@@ -28,6 +29,36 @@ public class UnitTest1
         return Path.Combine(Path.GetTempPath(), $"todos_{Guid.NewGuid():N}.db");
     }
 
+    private static void DeleteFileWithRetries(string path, int retries = 5, int delayMs = 200)
+    {
+        if (!File.Exists(path)) return;
+
+        for (int attempt = 0; attempt < retries; attempt++)
+        {
+            try
+            {
+                File.Delete(path);
+                return;
+            }
+            catch (IOException)
+            {
+                // Force finalizers and wait a bit for OS to release file handles, then retry
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Thread.Sleep(delayMs);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Thread.Sleep(delayMs);
+            }
+        }
+
+        // Final attempt (suppress any exception to avoid failing cleanup)
+        try { File.Delete(path); } catch { }
+    }
+
     [Fact]
     public void Test1()
     {
@@ -39,7 +70,7 @@ public class UnitTest1
         }
         finally
         {
-            if (File.Exists(dbPath)) File.Delete(dbPath);
+            DeleteFileWithRetries(dbPath);
         }
     }
 
@@ -64,7 +95,7 @@ public class UnitTest1
         }
         finally
         {
-            if (File.Exists(dbPath)) File.Delete(dbPath);
+            DeleteFileWithRetries(dbPath);
         }
     }
 
@@ -85,7 +116,7 @@ public class UnitTest1
         }
         finally
         {
-            if (File.Exists(dbPath)) File.Delete(dbPath);
+            DeleteFileWithRetries(dbPath);
         }
     }
 
@@ -115,7 +146,7 @@ public class UnitTest1
         }
         finally
         {
-            if (File.Exists(dbPath)) File.Delete(dbPath);
+            DeleteFileWithRetries(dbPath);
         }
     }
 
@@ -132,7 +163,7 @@ public class UnitTest1
         }
         finally
         {
-            if (File.Exists(dbPath)) File.Delete(dbPath);
+            DeleteFileWithRetries(dbPath);
         }
     }
 
@@ -158,7 +189,7 @@ public class UnitTest1
         }
         finally
         {
-            if (File.Exists(dbPath)) File.Delete(dbPath);
+            DeleteFileWithRetries(dbPath);
         }
     }
 
@@ -183,7 +214,7 @@ public class UnitTest1
         }
         finally
         {
-            if (File.Exists(dbPath)) File.Delete(dbPath);
+            DeleteFileWithRetries(dbPath);
         }
     }
 }
