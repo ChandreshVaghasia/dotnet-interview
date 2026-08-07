@@ -72,10 +72,24 @@ namespace TodoApi.Controllers
                 IsCompleted = request.IsCompleted
             };
 
-            var updated = _todoService.UpdateTodo(id, todo);
-            if (updated == null) return NotFound();
-
-            return Ok(updated);
+            try
+            {
+                var updated = _todoService.UpdateTodo(id, todo, request.Version);
+                if (updated == null) return NotFound();
+                return Ok(updated);
+            }
+            catch (ConcurrencyException ex)
+            {
+                // Return 409 Conflict with a problem details body
+                var problem = new ProblemDetails
+                {
+                    Title = "Conflict",
+                    Status = StatusCodes.Status409Conflict,
+                    Detail = "The todo was updated by another client. Fetch the latest version and retry."
+                };
+                _logger.LogWarning(ex, "Concurrency conflict updating todo {Id}", id);
+                return Conflict(problem);
+            }
         }
 
         // DELETE /api/todos/{id}

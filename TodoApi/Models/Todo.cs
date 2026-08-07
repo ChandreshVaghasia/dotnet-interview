@@ -14,4 +14,7 @@ public class Todo
     public bool IsCompleted { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+    // Optimistic concurrency version
+    public int Version { get; set; } = 1;
 }

@@ -28,12 +28,14 @@ namespace TodoApi.Services
         Todo? GetTodoById(int id);
 
         /// <summary>
-        /// Updates an existing todo item.
+        /// Updates an existing todo item using optimistic concurrency.
         /// </summary>
         /// <param name="id">Todo identifier.</param>
         /// <param name="todo">Updated todo information.</param>
+        /// <param name="expectedVersion">The client observed version for concurrency check.</param>
         /// <returns>The updated todo item, or null if the item was not found.</returns>
-        Todo? UpdateTodo(int id, Todo todo);
+        /// <exception cref="ConcurrencyException">Thrown when the item exists but the version does not match (conflict).</exception>
+        Todo? UpdateTodo(int id, Todo todo, int expectedVersion);
 
         /// <summary>
         /// Deletes a todo item.

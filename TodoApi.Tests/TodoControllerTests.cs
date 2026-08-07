@@ -27,6 +27,7 @@ namespace TodoApi.Tests
                 var createdTodo = createdResult.Value as Todo;
                 Assert.NotNull(createdTodo);
                 Assert.True(createdTodo.Id > 0);
+                Assert.Equal(1, createdTodo.Version);
             }
             finally
             {
@@ -92,7 +93,8 @@ namespace TodoApi.Tests
                 {
                     Title = "Nope",
                     Description = "No row",
-                    IsCompleted = false
+                    IsCompleted = false,
+                    Version = 1
                 };
 
                 var actionResult = controller.UpdateTodo(99999, request);
@@ -120,7 +122,8 @@ namespace TodoApi.Tests
                 {
                     Title = "Updated",
                     Description = "Updated Desc",
-                    IsCompleted = true
+                    IsCompleted = true,
+                    Version = created.Version
                 };
 
                 var actionResult = controller.UpdateTodo(created.Id, request);
@@ -132,6 +135,7 @@ namespace TodoApi.Tests
                 Assert.NotNull(updated);
                 Assert.Equal(created.Id, updated.Id);
                 Assert.Equal("Updated", updated.Title);
+                Assert.Equal(created.Version + 1, updated.Version);
             }
             finally
             {

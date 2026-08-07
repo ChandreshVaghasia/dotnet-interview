@@ -4,7 +4,7 @@ using TodoApi.Models;
 namespace TodoApi.Services
 {
     /// <summary>
-    /// Provides CRUD operations for Todo items.
+    /// Provides CRUD operations for Todo items with optimistic concurrency.
     /// </summary>
     public class TodoService : ITodoService
     {
@@ -30,7 +30,8 @@ namespace TodoApi.Services
                     Title TEXT NOT NULL,
                     Description TEXT,
                     IsCompleted INTEGER NOT NULL DEFAULT 0,
-                    CreatedAt TEXT NOT NULL
+                    CreatedAt TEXT NOT NULL,
+                    Version INTEGER NOT NULL DEFAULT 1
                 );
             ";
             command.ExecuteNonQuery();
@@ -61,6 +62,9 @@ namespace TodoApi.Services
             todo.Id = id;
             todo.CreatedAt = DateTime.Parse(createdAt, null, System.Globalization.DateTimeStyles.RoundtripKind);
 
+            // DB default Version = 1
+            todo.Version = 1;
+
             return todo;
         }
 
@@ -71,7 +75,7 @@ namespace TodoApi.Services
             connection.Open();
 
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT Id, Title, Description, IsCompleted, CreatedAt FROM Todos";
+            command.CommandText = "SELECT Id, Title, Description, IsCompleted, CreatedAt, Version FROM Todos";
 
             using var reader = command.ExecuteReader();
             while (reader.Read())
@@ -82,6 +86,7 @@ namespace TodoApi.Services
                 var isCompleted = reader.GetInt32(3) == 1;
                 var createdAtText = reader.IsDBNull(4) ? DateTime.UtcNow.ToString("o") : reader.GetString(4);
                 var createdAt = DateTime.Parse(createdAtText, null, System.Globalization.DateTimeStyles.RoundtripKind);
+                var version = reader.IsDBNull(5) ? 1 : reader.GetInt32(5);
 
                 todos.Add(new Todo
                 {
@@ -89,7 +94,8 @@ namespace TodoApi.Services
                     Title = title,
                     Description = description,
                     IsCompleted = isCompleted,
-                    CreatedAt = createdAt
+                    CreatedAt = createdAt,
+                    Version = version
                 });
             }
 
@@ -102,7 +108,7 @@ namespace TodoApi.Services
             connection.Open();
 
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT Id, Title, Description, IsCompleted, CreatedAt FROM Todos WHERE Id = @id";
+            command.CommandText = "SELECT Id, Title, Description, IsCompleted, CreatedAt, Version FROM Todos WHERE Id = @id";
             command.Parameters.AddWithValue("@id", id);
 
             using var reader = command.ExecuteReader();
@@ -111,6 +117,7 @@ namespace TodoApi.Services
                 var description = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
                 var createdAtText = reader.IsDBNull(4) ? DateTime.UtcNow.ToString("o") : reader.GetString(4);
                 var createdAt = DateTime.Parse(createdAtText, null, System.Globalization.DateTimeStyles.RoundtripKind);
+                var version = reader.IsDBNull(5) ? 1 : reader.GetInt32(5);
 
                 return new Todo
                 {
@@ -118,14 +125,15 @@ namespace TodoApi.Services
                     Title = reader.GetString(1),
                     Description = description,
                     IsCompleted = reader.GetInt32(3) == 1,
-                    CreatedAt = createdAt
+                    CreatedAt = createdAt,
+                    Version = version
                 };
             }
 
             return null;
         }
 
-        public Todo? UpdateTodo(int id, Todo todo)
+        public Todo? UpdateTodo(int id, Todo todo, int expectedVersion)
         {
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
@@ -133,22 +141,38 @@ namespace TodoApi.Services
             using var command = connection.CreateCommand();
             command.CommandText = @"
                 UPDATE Todos
-                SET Title = @title, Description = @description, IsCompleted = @isCompleted
-                WHERE Id = @id;
+                SET Title = @title, Description = @description, IsCompleted = @isCompleted, Version = Version + 1
+                WHERE Id = @id AND Version = @expectedVersion;
             ";
             command.Parameters.AddWithValue("@title", todo.Title ?? string.Empty);
             command.Parameters.AddWithValue("@description", todo.Description ?? string.Empty);
             command.Parameters.AddWithValue("@isCompleted", todo.IsCompleted ? 1 : 0);
             command.Parameters.AddWithValue("@id", id);
+            command.Parameters.AddWithValue("@expectedVersion", expectedVersion);
 
             var rowsAffected = command.ExecuteNonQuery();
 
             if (rowsAffected == 0)
             {
-                return null;
+                // Distinguish between missing row and version conflict
+                using var existsCmd = connection.CreateCommand();
+                existsCmd.CommandText = "SELECT COUNT(1) FROM Todos WHERE Id = @id";
+                existsCmd.Parameters.AddWithValue("@id", id);
+                var existsObj = existsCmd.ExecuteScalar();
+                var exists = Convert.ToInt32(existsObj) > 0;
+
+                if (!exists)
+                {
+                    return null; // not found
+                }
+
+                // Row exists but version mismatch - concurrency conflict
+                throw new ConcurrencyException("The todo item was modified by another process.");
             }
 
+            // Update successful, incremented version on DB: set returned object's Version to expectedVersion + 1
             todo.Id = id;
+            todo.Version = expectedVersion + 1;
             return todo;
         }
 

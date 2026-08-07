@@ -46,6 +46,7 @@ namespace TodoApi.Tests
 
                 Assert.NotNull(result);
                 Assert.True(result.Id > 0);
+                Assert.Equal(1, result.Version);
             }
             finally
             {
@@ -105,12 +106,13 @@ namespace TodoApi.Tests
                     IsCompleted = true
                 };
 
-                var result = service.UpdateTodo(created.Id, todo);
+                var result = service.UpdateTodo(created.Id, todo, created.Version);
                 Assert.NotNull(result);
 
                 var reloaded = service.GetTodoById(created.Id);
-                Assert.Equal("Updated", reloaded.Title);
+                Assert.Equal("Updated", reloaded!.Title);
                 Assert.True(reloaded.IsCompleted);
+                Assert.Equal(created.Version + 1, reloaded.Version);
             }
             finally
             {
@@ -130,7 +132,7 @@ namespace TodoApi.Tests
 
                 var fetched = service.GetTodoById(created.Id);
                 Assert.NotNull(fetched);
-                Assert.Equal(titleWithQuotes, fetched.Title);
+                Assert.Equal(titleWithQuotes, fetched!.Title);
             }
             finally
             {
@@ -147,7 +149,7 @@ namespace TodoApi.Tests
                 var service = new TodoService(TestHelpers.CreateConfiguration(dbPath));
                 var todo = new Todo { Title = "Doesn't matter", Description = "No row", IsCompleted = false };
 
-                var result = service.UpdateTodo(99999, todo);
+                var result = service.UpdateTodo(99999, todo, 1);
                 Assert.Null(result);
             }
             finally
@@ -207,7 +209,7 @@ namespace TodoApi.Tests
 
                 var all = service.GetAllTodos();
 
-                service.UpdateTodo(todo1.Id, new Todo { Title = "Updated", Description = "D1" });
+                service.UpdateTodo(todo1.Id, new Todo { Title = "Updated", Description = "D1" }, todo1.Version);
 
                 service.DeleteTodo(todo2.Id);
 

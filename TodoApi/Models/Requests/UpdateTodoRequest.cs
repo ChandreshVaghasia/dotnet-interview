@@ -17,5 +17,8 @@ namespace TodoApi.Models.Requests
         public string Description { get; set; }
 
         public bool IsCompleted { get; set; }
+
+        /// Client observed version used for optimistic concurrency.
+        public int Version { get; set; }
     }
 }
