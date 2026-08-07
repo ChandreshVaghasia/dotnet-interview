@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using TodoApi.Services;
+using TodoApi.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,9 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+// Register global exception handling middleware early in the pipeline so it can catch downstream errors.
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 InitializeDatabase(builder.Configuration);
 
